@@ -2,104 +2,151 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0c0c0d">
   <meta name="color-scheme" content="dark">
-  <meta name="theme-color" content="#0b1020">
-  <title>NEXUS Server — Control Center</title>
+  <title>NEXUS — Server Control</title>
   <link rel="stylesheet" href="/assets/app.css">
-  <script defer src="/assets/app.js"></script>
+  <script src="/assets/app.js" defer></script>
 </head>
 <body>
-  <section class="auth-screen" id="authScreen" aria-labelledby="authTitle">
+  <div id="toast-region" class="toast-region" aria-live="polite" aria-atomic="true"></div>
+
+  <section id="auth-screen" class="auth-screen" hidden>
+    <div class="auth-backdrop" aria-hidden="true"></div>
     <div class="auth-card">
-      <a class="brand auth-brand" href="/" aria-label="NEXUS home">
-        <span class="brand-mark"><svg viewBox="0 0 40 40" aria-hidden="true"><path d="M8 10.5 20 4l12 6.5v14L20 31 8 24.5z"/><path d="M14 23V14l12 12V14"/><circle cx="20" cy="20" r="17"/></svg></span>
-        <span class="brand-copy"><strong>NEXUS</strong><small>SERVER CONTROL</small></span>
+      <a class="brand auth-brand" href="#" aria-label="NEXUS home">
+        <span class="brand-mark" aria-hidden="true"><span>N</span></span>
+        <span class="brand-copy"><strong>NEXUS</strong><small>Server Control</small></span>
       </a>
-      <div class="eyebrow"><span class="eyebrow-line"></span> PHASE 2 · SECURE ACCESS</div>
-      <h1 id="authTitle">Welcome back<span class="title-period">.</span></h1>
-      <p class="auth-subtitle" id="authSubtitle">Sign in to access your private server dashboard.</p>
-      <div class="auth-notice" id="authNotice" role="status" aria-live="polite">The first registered account becomes administrator. Use a private connection for initial setup.</div>
-      <form id="authForm" class="auth-form">
-        <label for="authEmail">Email address</label>
-        <input id="authEmail" name="email" type="email" autocomplete="username" maxlength="254" required placeholder="you@example.com">
-        <label for="authPassword">Password</label>
-        <input id="authPassword" name="password" type="password" autocomplete="current-password" minlength="12" maxlength="128" required placeholder="At least 12 characters">
-        <p class="password-help" id="passwordHelp">Use at least 12 characters.</p>
-        <button class="auth-submit" id="authSubmit" type="submit">Sign in</button>
+      <p class="eyebrow">SECURE WORKSPACE</p>
+      <h1 id="auth-title">Welcome back.</h1>
+      <p id="auth-description" class="muted">Sign in to manage your infrastructure.</p>
+      <form id="auth-form" class="auth-form">
+        <label for="auth-email">Email address</label>
+        <input id="auth-email" name="email" type="email" autocomplete="username" required maxlength="254" placeholder="you@example.com">
+        <label for="auth-password">Password</label>
+        <input id="auth-password" name="password" type="password" autocomplete="current-password" required minlength="12" maxlength="128" placeholder="At least 12 characters">
+        <p id="auth-error" class="form-error" role="alert" hidden></p>
+        <button id="auth-submit" class="btn btn-primary btn-wide" type="submit">Sign in <span aria-hidden="true">↗</span></button>
       </form>
-      <button class="auth-switch" id="authSwitch" type="button">New here? Create an account</button>
-      <p class="auth-location"><span></span> Access restricted to IPs geolocated in Telangana, India</p>
-      <p class="auth-footnote">IP geolocation can be inaccurate. A private recovery connection is documented for administrators.</p>
+      <button id="auth-toggle" class="text-button" type="button">Need an account? Create one</button>
+      <p class="auth-footnote"><span class="status-dot status-dot-muted"></span> Protected session · NEXUS Phase 2</p>
     </div>
   </section>
-  <div class="app-shell auth-hidden" id="appShell">
-    <aside class="sidebar" id="sidebar" aria-label="Main navigation">
-      <a class="brand" href="/" aria-label="NEXUS home">
-        <span class="brand-mark"><svg viewBox="0 0 40 40" aria-hidden="true"><path d="M8 10.5 20 4l12 6.5v14L20 31 8 24.5z"/><path d="M14 23V14l12 12V14"/><circle cx="20" cy="20" r="17"/></svg></span>
-        <span class="brand-copy"><strong>NEXUS</strong><small>SERVER CONTROL</small></span>
-      </a>
-      <div class="nav-label">WORKSPACE</div>
-      <nav class="nav-list">
-        <a class="nav-item active" href="#overview" aria-current="page"><span class="nav-icon">▦</span><span>Overview</span></a>
-        <button class="nav-item future" type="button" data-future="Applications"><span class="nav-icon">◈</span><span>Applications</span><span class="coming">SOON</span></button>
-        <button class="nav-item future" type="button" data-future="AI agents"><span class="nav-icon">✳</span><span>AI agents</span><span class="coming">SOON</span></button>
-        <button class="nav-item future" type="button" data-future="File manager"><span class="nav-icon">▤</span><span>File manager</span><span class="coming">SOON</span></button>
-        <button class="nav-item future" type="button" data-future="Containers"><span class="nav-icon">▣</span><span>Containers</span><span class="coming">SOON</span></button>
-      </nav>
-      <div class="nav-label nav-label-lower">SYSTEM</div>
-      <nav class="nav-list">
-        <button class="nav-item future" type="button" data-future="Monitoring"><span class="nav-icon">⌁</span><span>Monitoring</span><span class="coming">SOON</span></button>
-        <button class="nav-item future" type="button" data-future="Backups"><span class="nav-icon">⤓</span><span>Backups</span><span class="coming">SOON</span></button>
-        <button class="nav-item future" type="button" data-future="Settings"><span class="nav-icon">⚙</span><span>Settings</span><span class="coming">SOON</span></button>
+
+  <div id="app-shell" class="app-shell" hidden>
+    <div id="sidebar-scrim" class="sidebar-scrim"></div>
+    <aside id="sidebar" class="sidebar" aria-label="Main navigation">
+      <div class="sidebar-brand-row">
+        <a class="brand" href="#overview" aria-label="NEXUS Overview">
+          <span class="brand-mark" aria-hidden="true"><span>N</span></span>
+          <span class="brand-copy"><strong>NEXUS</strong><small>Server Control</small></span>
+        </a>
+        <button id="close-sidebar" class="icon-button sidebar-close" type="button" aria-label="Close navigation">×</button>
+      </div>
+      <nav class="side-nav">
+        <a class="nav-item active" href="#overview" data-page="overview"><span class="nav-icon" data-icon="home"></span><span>Overview</span></a>
+        <p class="nav-group-label">MANAGE</p>
+        <a class="nav-item" href="#applications" data-page="applications"><span class="nav-icon" data-icon="cube"></span><span>Applications</span></a>
+        <a class="nav-item" href="#bot-hosting" data-page="bot-hosting"><span class="nav-icon" data-icon="bot"></span><span>Bot Hosting</span><span class="nav-badge">Planned</span></a>
+        <a class="nav-item" href="#ai-agents" data-page="ai-agents"><span class="nav-icon" data-icon="sparkles"></span><span>AI Agents</span><span class="nav-badge">Planned</span></a>
+        <a class="nav-item" href="#containers" data-page="containers"><span class="nav-icon" data-icon="box"></span><span>Containers</span><span class="nav-badge">Planned</span></a>
+        <p class="nav-group-label">SYSTEM</p>
+        <a class="nav-item" href="#monitoring" data-page="monitoring"><span class="nav-icon" data-icon="chart"></span><span>Monitoring</span><span class="nav-badge nav-badge-quiet">Planned</span></a>
+        <a class="nav-item" href="#backups" data-page="backups"><span class="nav-icon" data-icon="database"></span><span>Backups</span><span class="nav-badge nav-badge-quiet">Planned</span></a>
+        <a class="nav-item" href="#settings" data-page="settings"><span class="nav-icon" data-icon="settings"></span><span>Settings</span><span class="nav-badge nav-badge-quiet">Planned</span></a>
       </nav>
       <div class="sidebar-bottom">
-        <div class="node-card"><span class="node-pulse"></span><div><strong>Local node</strong><small>Loopback only</small></div><span class="node-dot"></span></div>
-        <div class="sidebar-foot">NEXUS Server <span>v0.2.0 · Phase 2</span></div>
+        <button class="server-mini" id="server-health-button" type="button">
+          <span class="status-dot" id="sidebar-health-dot"></span>
+          <span class="server-mini-copy"><strong id="sidebar-health-title">Checking server…</strong><small id="sidebar-health-subtitle">NEXUS Phase 2</small></span>
+          <span class="chevron">›</span>
+        </button>
+        <div class="profile-row">
+          <span class="avatar avatar-large" id="sidebar-avatar">N</span>
+          <span class="profile-copy"><strong id="sidebar-user">NEXUS User</strong><small id="sidebar-role">Account</small></span>
+          <button id="sign-out-bottom" class="icon-button profile-menu-button" type="button" aria-label="Sign out">⋮</button>
+        </div>
       </div>
     </aside>
 
-    <main class="main-content" id="overview">
+    <div class="main-column">
       <header class="topbar">
-        <button class="menu-toggle" id="menuToggle" aria-label="Toggle navigation" aria-expanded="false">☰</button>
-        <div class="breadcrumb"><span>Workspace</span><span class="crumb-sep">/</span><strong>Overview</strong></div>
-        <div class="topbar-right"><span class="local-pill"><span></span> PROTECTED</span><button id="refreshButton" class="icon-button" type="button" aria-label="Refresh dashboard" title="Refresh dashboard">↻</button><div class="avatar" id="userAvatar" title="Signed-in user">N</div><button id="logoutButton" class="logout-button" type="button">Sign out</button></div>
+        <button id="open-sidebar" class="icon-button mobile-menu" type="button" aria-label="Open navigation"><span data-icon="menu"></span></button>
+        <button id="search-trigger" class="global-search" type="button"><span data-icon="search"></span><span>Search servers, applications, logs…</span><kbd>Ctrl K</kbd></button>
+        <div class="topbar-actions">
+          <button id="notifications-button" class="icon-button notification-button" type="button" aria-label="Show notifications"><span data-icon="bell"></span><span id="notification-dot" class="notification-dot" hidden></span></button>
+          <button id="profile-button" class="profile-trigger" type="button" aria-label="Account menu"><span id="top-avatar" class="avatar">N</span><span data-icon="chevron-down" class="chevron-icon"></span></button>
+          <div id="profile-menu" class="profile-menu" hidden><div class="profile-menu-heading"><strong id="menu-user">NEXUS User</strong><small id="menu-role">Account</small></div><button id="sign-out-top" type="button">Sign out <span data-icon="logout"></span></button></div>
+        </div>
       </header>
 
-      <section class="page-heading">
-        <div><div class="eyebrow"><span class="eyebrow-line"></span> CONTROL CENTER</div><h1>Server overview<span class="title-period">.</span></h1><p class="page-subtitle">A live view of your server's health and activity.</p></div>
-        <div class="heading-status"><span class="status-dot"></span><div><strong id="apiStatus">Connecting</strong><small id="lastUpdated">Checking local API…</small></div></div>
-      </section>
+      <main id="main-content" class="main-content">
+        <section id="overview-page" class="page page-active" aria-labelledby="page-title">
+          <header class="hero-header">
+            <div class="hero-scenery" aria-hidden="true"><span class="sun"></span><span class="mountain mountain-back"></span><span class="mountain mountain-front"></span></div>
+            <div class="hero-copy">
+              <p class="eyebrow">WELCOME BACK</p>
+              <h1 id="page-title">Your infrastructure,<br class="hero-break"> at a glance.</h1>
+              <p class="hero-subtitle">Monitor and manage your server, applications and services from one place.</p>
+            </div>
+            <div class="hero-right">
+              <div class="clock-block"><span id="current-date">Local time</span><strong id="current-time">--:--</strong></div>
+              <button id="server-selector" class="server-selector" type="button"><span data-icon="database"></span><span>Main Server</span><span data-icon="chevron-down"></span></button>
+            </div>
+          </header>
 
-      <section class="security-banner" role="status">
-        <span class="banner-icon">!</span><div><strong>Authentication is active; advanced app controls are not enabled.</strong><p>This version protects dashboard APIs with server-side sessions and applies approximate Telangana IP geolocation. Keep it on loopback and use HTTPS for any tunnel.</p></div>
-      </section>
+          <section class="metrics-grid" aria-label="Server metrics">
+            <article class="metric-card metric-status"><div class="metric-card-top"><span>Server Status</span><span class="metric-icon metric-icon-orange" data-icon="server"></span></div><div class="metric-primary"><span id="server-status-dot" class="status-dot status-dot-muted"></span><strong id="server-status-value">Checking…</strong></div><p id="server-status-detail" class="metric-note">Checking API and database health</p></article>
+            <article class="metric-card"><div class="metric-card-top"><span>CPU Usage</span><span class="metric-icon metric-icon-orange" data-icon="cpu"></span></div><div class="metric-primary metric-number"><strong id="cpu-value">—</strong><span>%</span></div><p id="cpu-detail" class="metric-note">Live value unavailable</p><div class="progress-track"><span id="cpu-progress" class="progress-fill fill-orange" style="width:0%"></span></div></article>
+            <article class="metric-card"><div class="metric-card-top"><span>Memory Usage</span><span class="metric-icon metric-icon-coral" data-icon="memory"></span></div><div class="metric-primary metric-number"><strong id="memory-value">—</strong><span>%</span></div><p id="memory-detail" class="metric-note">Live value unavailable</p><div class="progress-track"><span id="memory-progress" class="progress-fill fill-yellow" style="width:0%"></span></div></article>
+            <article class="metric-card"><div class="metric-card-top"><span>Disk Usage</span><span class="metric-icon metric-icon-green" data-icon="hard-drive"></span></div><div class="metric-primary metric-number"><strong id="disk-value">—</strong><span>%</span></div><p id="disk-detail" class="metric-note">Live value unavailable</p><div class="progress-track"><span id="disk-progress" class="progress-fill fill-green" style="width:0%"></span></div></article>
+            <article class="metric-card"><div class="metric-card-top"><span>Uptime</span><span class="metric-icon metric-icon-yellow" data-icon="clock"></span></div><div class="metric-primary metric-number"><strong id="uptime-value">—</strong></div><p id="uptime-detail" class="metric-note">Not reported by API</p></article>
+          </section>
 
-      <section class="section-heading"><div><h2>System resources</h2><p>Collected from the Linux host by the NEXUS API.</p></div><span class="live-label"><span></span> LIVE DATA</span></section>
-      <section class="metrics-grid" aria-label="System metrics">
-        <article class="metric-card"><div class="metric-top"><span class="metric-icon cpu-icon">⌁</span><span class="metric-label">CPU USAGE</span><span class="metric-menu">•••</span></div><div class="metric-value-row"><strong id="cpuValue">—</strong><span class="metric-unit">%</span></div><div class="meter"><span id="cpuBar" class="meter-fill blue" style="width:0%"></span></div><div class="metric-foot"><span>Host CPU utilization</span><span id="cpuCaption">Waiting for data</span></div></article>
-        <article class="metric-card"><div class="metric-top"><span class="metric-icon ram-icon">▥</span><span class="metric-label">MEMORY</span><span class="metric-menu">•••</span></div><div class="metric-value-row"><strong id="ramValue">—</strong><span class="metric-unit">%</span></div><div class="meter"><span id="ramBar" class="meter-fill violet" style="width:0%"></span></div><div class="metric-foot"><span id="ramDetail">— used of —</span><span id="ramCaption">RAM</span></div></article>
-        <article class="metric-card"><div class="metric-top"><span class="metric-icon disk-icon">▤</span><span class="metric-label">DISK SPACE</span><span class="metric-menu">•••</span></div><div class="metric-value-row"><strong id="diskValue">—</strong><span class="metric-unit">%</span></div><div class="meter"><span id="diskBar" class="meter-fill cyan" style="width:0%"></span></div><div class="metric-foot"><span id="diskDetail">— available</span><span id="diskCaption">Root volume</span></div></article>
-        <article class="metric-card"><div class="metric-top"><span class="metric-icon uptime-icon">◷</span><span class="metric-label">SYSTEM UPTIME</span><span class="metric-menu">•••</span></div><div class="metric-value-row"><strong id="uptimeValue">—</strong><span class="metric-unit"> </span></div><div class="meter"><span id="uptimeBar" class="meter-fill green" style="width:100%"></span></div><div class="metric-foot"><span>Since last host boot</span><span id="uptimeCaption">Linux host</span></div></article>
-      </section>
+          <div class="dashboard-grid dashboard-grid-main">
+            <section class="panel resource-panel" aria-labelledby="resource-title">
+              <div class="panel-header"><div><h2 id="resource-title">Resource Utilization</h2><p class="panel-subtitle">Historical data from the server</p></div><div id="range-controls" class="segmented-control" role="group" aria-label="Chart time range"><button type="button" data-range="1H">1H</button><button type="button" data-range="6H">6H</button><button type="button" data-range="24H" class="selected" aria-pressed="true">24H</button><button type="button" data-range="7D">7D</button></div></div>
+              <div id="resource-chart" class="chart-wrap"><div class="chart-empty"><span data-icon="chart"></span><strong>No historical metrics available</strong><p>The dashboard will draw this chart when the API provides time-series data.</p></div></div>
+              <div class="chart-legend"><span><i class="legend-dot legend-cpu"></i>CPU</span><span><i class="legend-dot legend-memory"></i>Memory</span><span><i class="legend-dot legend-disk"></i>Disk</span></div>
+            </section>
 
-      <section class="main-grid">
-        <article class="panel system-panel"><div class="panel-heading"><div><h2>System status</h2><p>Service integrations and platform readiness.</p></div><span class="panel-badge">PHASE 2</span></div><div class="status-list">
-          <div class="status-row"><span class="status-symbol ok">✓</span><div class="status-description"><strong>NEXUS API</strong><small>HTTP server and health endpoint</small></div><span class="status-text" id="serviceApi">Checking</span></div>
-          <div class="status-row"><span class="status-symbol ok">✓</span><div class="status-description"><strong>SQLite database</strong><small>Local event store</small></div><span class="status-text" id="serviceDb">Checking</span></div>
-          <div class="status-row"><span class="status-symbol muted">◌</span><div class="status-description"><strong>Hermes Agent</strong><small>Read-only service integration is planned</small></div><span class="status-text neutral">Not integrated</span></div>
-          <div class="status-row"><span class="status-symbol muted">◌</span><div class="status-description"><strong>Application hosting</strong><small>Allowlisted service management planned</small></div><span class="status-text neutral">Not integrated</span></div>
-          <div class="status-row"><span class="status-symbol muted">◌</span><div class="status-description"><strong>Public tunnel</strong><small>Keep disabled until public-access review is complete</small></div><span class="status-text warning-text">Private only</span></div>
-        </div><div class="panel-note"><span>i</span><p>Phase 2 adds accounts and sessions. Application controls will be added only after an allowlisted, role-checked management layer exists.</p></div></article>
+            <section class="panel service-panel" aria-labelledby="service-title">
+              <div class="panel-header"><div><h2 id="service-title">Service Health</h2><p class="panel-subtitle">Verified status only</p></div><button class="inline-action" id="refresh-services" type="button">Refresh <span aria-hidden="true">↗</span></button></div>
+              <div id="service-list" class="service-list"><div class="list-loading">Checking services…</div></div>
+            </section>
+          </div>
 
-        <article class="panel events-panel"><div class="panel-heading"><div><h2>Recent activity</h2><p>Events recorded by NEXUS.</p></div><span class="event-count" id="eventCount">— EVENTS</span></div><div id="eventsList" class="events-list"><div class="empty-state"><span class="empty-spinner"></span><strong>Loading activity</strong><small>Connecting to local event store…</small></div></div><div class="events-footer"><span class="footer-dot"></span> Event feed <span class="footer-muted">· Last 12 events</span></div></article>
-      </section>
+          <div class="dashboard-grid dashboard-grid-bottom">
+            <section class="panel activity-panel" aria-labelledby="activity-title">
+              <div class="panel-header"><div><h2 id="activity-title">Recent Activity</h2><p class="panel-subtitle">Events reported by NEXUS</p></div><button class="inline-action" id="refresh-events" type="button">Refresh <span aria-hidden="true">↗</span></button></div>
+              <div id="activity-list" class="activity-list"><div class="list-loading">Loading events…</div></div>
+            </section>
+            <section class="panel quick-panel" aria-labelledby="quick-title">
+              <div class="panel-header"><div><h2 id="quick-title">Quick Actions</h2><p class="panel-subtitle">Shortcuts to available tools</p></div></div>
+              <div class="quick-grid">
+                <button class="quick-card" id="quick-refresh" type="button"><span class="quick-icon metric-icon-orange" data-icon="refresh"></span><span class="quick-copy"><strong>Refresh Overview</strong><small>Fetch current server data</small></span><span class="quick-arrow">›</span></button>
+                <button class="quick-card" id="quick-events" type="button"><span class="quick-icon metric-icon-coral" data-icon="list"></span><span class="quick-copy"><strong>View Events</strong><small>Inspect recorded activity</small></span><span class="quick-arrow">›</span></button>
+                <button class="quick-card" id="quick-bots" type="button"><span class="quick-icon metric-icon-orange" data-icon="bot"></span><span class="quick-copy"><strong>Bot Hosting</strong><small>Planned · not implemented</small></span><span class="quick-arrow">›</span></button>
+                <button class="quick-card" id="quick-roadmap" type="button"><span class="quick-icon metric-icon-yellow" data-icon="layers"></span><span class="quick-copy"><strong>Product Roadmap</strong><small>See upcoming capabilities</small></span><span class="quick-arrow">›</span></button>
+              </div>
+            </section>
+          </div>
+          <footer class="app-footer"><span><i class="status-dot" id="footer-status-dot"></i><span id="footer-status">API status checking</span></span><span id="footer-version">NEXUS · Phase 2</span><span id="last-updated">Not refreshed yet</span></footer>
+        </section>
 
-      <section class="next-section"><div class="next-copy"><div class="eyebrow"><span class="eyebrow-line"></span> BUILD ROADMAP</div><h2>One control plane.<br><span>Room to grow.</span></h2><p>NEXUS is being built in safe, testable phases. The foundation comes first; powerful server controls follow behind authentication and strict permissions.</p></div><div class="roadmap-list"><div class="roadmap-step complete"><span class="step-number">01</span><div><strong>Foundation & monitoring</strong><small>Dashboard · real metrics · SQLite · health API</small></div><span class="step-state">COMPLETE</span></div><div class="roadmap-step complete"><span class="step-number">02</span><div><strong>Authentication foundation</strong><small>First admin · sessions · CSRF · region gate</small></div><span class="step-state">BUILT</span></div><div class="roadmap-step"><span class="step-number">03</span><div><strong>Apps, bots & Hermes</strong><small>Allowlisted service adapters · logs · controls</small></div><span class="step-state">PLANNED</span></div><div class="roadmap-step"><span class="step-number">04</span><div><strong>Files, backups & tunnel</strong><small>Private files · recovery · controlled access</small></div><span class="step-state">PLANNED</span></div></div></section>
-
-      <footer class="page-footer"><div class="footer-brand"><span class="footer-logo">N</span><strong>NEXUS</strong><span>SERVER CONTROL</span></div><p>Built for your own infrastructure. <span id="footerVersion">v0.2.0</span></p><p class="footer-local"><span></span> Loopback only · Telangana IP gate</p></footer>
-    </main>
+        <section id="secondary-page" class="page secondary-page" aria-labelledby="secondary-title" hidden>
+          <p class="eyebrow">NEXUS WORKSPACE</p><h1 id="secondary-title">Feature roadmap</h1><p id="secondary-description" class="secondary-intro">A transparent view of what exists and what comes next.</p>
+          <div id="roadmap-content" class="roadmap-content"></div>
+          <button id="back-overview" class="btn btn-secondary" type="button">← Back to overview</button>
+        </section>
+      </main>
+    </div>
   </div>
-  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <dialog id="search-dialog" class="search-dialog"><div class="search-dialog-head"><span data-icon="search"></span><input id="command-search" type="search" placeholder="Search NEXUS pages and actions…" aria-label="Search NEXUS pages and actions"><kbd>ESC</kbd></div><div id="search-results" class="search-results"></div><p class="dialog-footnote">Use ↑ and ↓ to navigate, Enter to select, Esc to close.</p></dialog>
+  <dialog id="events-dialog" class="content-dialog"><div class="dialog-title-row"><div><p class="eyebrow">SYSTEM LOG</p><h2>Recent events</h2></div><button class="icon-button" data-close-dialog="events-dialog" type="button" aria-label="Close events">×</button></div><div id="dialog-events-list" class="activity-list"></div></dialog>
+  <dialog id="notice-dialog" class="content-dialog notice-dialog"><div class="dialog-title-row"><div><p class="eyebrow">NEXUS</p><h2 id="notice-title">Coming soon</h2></div><button class="icon-button" data-close-dialog="notice-dialog" type="button" aria-label="Close notice">×</button></div><p id="notice-message" class="muted"></p><button id="notice-ok" class="btn btn-primary" type="button">Got it</button></dialog>
 </body>
 </html>
