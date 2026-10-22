@@ -1,0 +1,1 @@
+The initial `events` schema is created idempotently by the application at startup and is documented in `0001_initial.sql`. Future schema changes should add numbered migrations and an explicit migration runner before altering production data.
