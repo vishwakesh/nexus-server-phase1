@@ -1,20 +1,23 @@
-# Build status at handoff
+# NEXUS Phase 2 — Build status at handoff
 
 Implemented in source:
-- Axum server with localhost-only binding and non-loopback guard
-- SQLite event table initialization and recent-event API
-- health, info, metrics, and events endpoints
-- responsive mobile dashboard using local CSS/JS (no external CDN)
-- real host CPU, RAM, disk, and uptime collection through `sysinfo`
-- structured tracing logs and Ctrl+C/SIGTERM graceful shutdown
-- README and security notes
+- Existing localhost-only Rust/Axum dashboard endpoints
+- SQLite events, users, and sessions tables
+- First registered account assigned admin in an SQLite `BEGIN IMMEDIATE` transaction; later registrations assigned user
+- Argon2 password hashing and secure random opaque sessions
+- Server-side session lookup/revocation, 12-hour expiry, HttpOnly/SameSite cookie, optional Secure cookie flag
+- CSRF-token check for authenticated non-safe methods
+- In-memory auth attempt throttle
+- Telangana public IP geolocation gate via HTTPS `ipapi.co`, with 15-minute success-result cache and fail-closed remote behavior
+- Security response headers and login/register frontend
+- Local-only bind enforced by Rust startup validation
 
-Checks completed in the authoring environment:
-- JavaScript syntax check: passed (`node --check`)
-- HTML parse smoke test: passed
+Checks performed in the authoring workspace:
+- JavaScript syntax check: passed (`node --check frontend/app.js`)
+- HTML parser smoke check: passed
 
-Not verified here:
-- Rust compilation and Cargo tests: unable to run because `rustc` and `cargo` are not installed in this environment, and network access to install them is unavailable.
-- VPS runtime behavior and HTTP integration checks: must be run after the archive is transferred to the VPS.
+Not verified:
+- Rust compilation and Cargo tests: Rust/Cargo are not installed in the authoring workspace; must be checked on the VPS.
+- End-to-end browser authentication, IP-geolocation provider behavior, and HTTPS proxy headers must be tested on the VPS.
 
-Do not expose this Phase 1 application publicly. Authentication, authorization, CSRF protections, session management, and privileged-operation controls are not implemented yet. Do not tunnel it with ngrok until those phases are implemented and reviewed.
+Application hosting remains a planned phase and is not implemented in this build. Keep Phase 2 loopback-only until the first admin account is created and the deployment is reviewed.

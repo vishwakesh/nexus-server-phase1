@@ -1,18 +1,22 @@
 [package]
 name = "nexus-api"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
-description = "NEXUS Server local-first management dashboard"
+description = "NEXUS Server Phase 2: authentication foundation and Telangana IP geofence"
 license = "MIT"
 
 [dependencies]
 anyhow = "1"
+argon2 = "0.5"
 axum = "0.8"
+rand_core = { version = "0.6", features = ["getrandom"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+sha2 = "0.10"
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio-rustls", "sqlite"] }
 sysinfo = "0.33"
-tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal", "net"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal", "net", "sync", "time"] }
 tower-http = { version = "0.6", features = ["trace"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }

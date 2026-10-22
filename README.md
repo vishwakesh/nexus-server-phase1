@@ -1,82 +1,58 @@
-# NEXUS Server — Phase 1
+# NEXUS Server — Phase 2 Auth Foundation
 
-A local-first Rust/Axum server dashboard foundation for Ubuntu. This milestone provides a responsive dashboard, SQLite event storage, health/info/metrics/events APIs, structured logs, and graceful shutdown.
+NEXUS Phase 2 builds on the existing Rust/Axum dashboard and adds account registration, a first-account administrator rule, Argon2 password hashes, server-side sessions, CSRF validation for authenticated state-changing requests, login/registration throttling, security headers, and a Telangana-only public-IP geolocation gate.
 
-## Important security limitation
+**Phase 2 is a separate development copy. It does not change or replace Phase 1.** Default bind is `127.0.0.1:3001`; the server refuses non-loopback binding. Do not expose it directly to the public internet.
 
-**Phase 1 does not implement authentication. Do not expose it through ngrok, a public IP, or a public reverse proxy.** The application rejects non-loopback `NEXUS_BIND` values and defaults to `127.0.0.1:3000`. Finish and test authentication/authorization before enabling any public access.
+## Features
 
-## Requirements
+- The first successful registration is assigned `admin` atomically in SQLite. All later registrations get the `user` role.
+- Passwords are hashed with Argon2. Plain-text passwords are never written to the database or logs.
+- Random, opaque session cookies are `HttpOnly` and `SameSite=Strict`; only a SHA-256 hash of the session token is stored in SQLite.
+- Sessions expire after 12 hours. Logout revokes the server-side session.
+- CSRF token validation is included for authenticated non-safe HTTP methods.
+- Login and registration attempts are throttled in memory per forwarded client IP.
+- Every non-health request is restricted to public IPs whose `ipapi.co` response says country `IN` and region `Telangana`. Successful checks are cached for 15 minutes.
+- Health endpoint: `GET /api/health`; auth status: `GET /api/auth/status`; session: `GET /api/auth/me`.
+- CPU, memory, disk, uptime, and SQLite events require a valid login.
 
-- Rust/Cargo toolchain
-- Ubuntu/Linux
-- Build dependencies required by SQLx SQLite (usually available in standard Rust build environment)
+## Important setup order
 
-Docker and Node.js are not needed for Phase 1.
+1. Deploy on loopback only.
+2. Open a **private SSH tunnel** to port 3001 and register the first account. That first account becomes admin.
+3. Confirm the account and sign-in work.
+4. Only then consider an HTTPS tunnel or reverse proxy. Set `NEXUS_COOKIE_SECURE=true` before using an HTTPS URL.
 
-## Install without overwriting an existing project
+Do not expose the service before creating your admin account: anyone who registers first can become admin. This project deliberately does not bind to `0.0.0.0`.
 
-On the VPS, first inspect the current directory:
+## Build on Ubuntu / the VPS
+
+Required tools: Rust/Cargo, Git, a C build toolchain, and a supported system environment. With the source in `/opt/nexus-server-phase2`:
 
 ```bash
-cd ~/nexus-server
-pwd
-find . -maxdepth 3 -type f -print | sort | head -200
-```
-
-Upload/extract this archive to a separate directory such as `~/nexus-server-phase1` or another unused path. Do not overwrite existing files until you've inspected and backed them up. Then enter the extracted folder.
-
-```bash
-cargo fmt
+cd /opt/nexus-server-phase2
 cargo fmt --check
 cargo check
 cargo test
-cargo run --release
+cargo build --release
 ```
 
-The app logs its bound address and data directory. Open the dashboard from the VPS itself or use an SSH port forward from your phone/computer. It listens on `127.0.0.1:3000` by default.
+The maintainer's authoring workspace did not have Rust installed, so Rust compilation has **not** been verified here. Run these commands on your VPS and fix any compiler output before enabling the service.
 
-## API endpoints
+## Example dedicated systemd service
 
-- `GET /` — dashboard
-- `GET /assets/app.css` — local CSS
-- `GET /assets/app.js` — dashboard JavaScript
-- `GET /api/health` — health and SQLite connectivity
-- `GET /api/info` — app version, bind address, process uptime
-- `GET /api/metrics` — host CPU, memory, disk, system uptime
-- `GET /api/events` — most recent 12 NEXUS events
+Review `deploy/nexus-server-phase2.service`. It is a template: check paths and the `nexus-web` account before installing it. Keep Phase 1 on port 3000 and give Phase 2 a separate data directory and port 3001. Never point Phase 2 at the Phase 1 SQLite file.
 
-Example local checks in a second terminal:
+## Telangana IP gate and privacy
 
-```bash
-curl -fsS http://127.0.0.1:3000/api/health
-curl -fsS http://127.0.0.1:3000/api/metrics
-curl -fsS http://127.0.0.1:3000/api/events
-```
+The gate uses HTTPS requests to `ipapi.co` to estimate the region for the public IP. That third-party service receives the connecting public IP. IP geolocation is approximate and can be incorrect for mobile carriers, VPNs, proxies, and roaming connections. If the lookup fails, remote requests are denied (fail closed). Loopback requests are allowed for private local setup/recovery. Do not trust forwarded headers if you expose the app without keeping its backend bound to loopback and routing requests through a known local proxy.
 
-## Data and configuration
+The region gate checks state, not individual districts. It accepts a response identifying `Telangana` (or region code `TG` / `TS`) in India. A state-level IP database cannot guarantee a person's physical location.
 
-- Default data directory: `$HOME/.local/share/nexus`
-- SQLite database: `$HOME/.local/share/nexus/nexus.sqlite3`
-- Override data path with `NEXUS_DATA_DIR`
-- Override port with `NEXUS_PORT`
-- `NEXUS_BIND` may be set only to a loopback address in this release; non-loopback values are rejected intentionally.
+## What is not implemented yet
 
-The server creates its SQLite events table at startup. `migrations/0001_initial.sql` documents the same schema.
+- Application hosting, arbitrary process execution, Docker controls, file manager, Hermes controls, backups, public tunnel setup, or an app installation interface.
+- Multi-factor authentication, email verification, password reset, persistent rate-limit storage, and administrator invite management.
+- A standalone GeoIP database; region checks require the external HTTPS lookup service.
 
-## Testing and limitations
-
-The dashboard reads real values via `sysinfo`, and loads events from SQLite. A two-test unit suite covers simple API contract/percentage logic. Integration tests against a running VPS should still be performed after transfer. Rust compilation has not been verified in the authoring environment because this workspace does not include `rustc`/`cargo` and has no network access to install them. Run `cargo fmt`, `cargo check`, and `cargo test` on the VPS before treating it as runnable; share any errors so they can be corrected.
-
-Not implemented in Phase 1: authentication, service management, Hermes controls, Docker controls, file manager, backups, ngrok deployment, and authorization/audit policy for privileged operations. UI labels for future features explicitly show these are not integrated.
-
-## Roadmap
-
-1. Phase 1: dashboard foundation, actual metrics, SQLite, health API.
-2. Phase 2: first-run administrator setup, secure sessions, CSRF, rate limiting, audit events.
-3. Phase 3: allowlisted app/systemd service adapters and bot hosting.
-4. Phase 4: read-only/controlled Hermes integration.
-5. Phase 5: private file manager with path confinement.
-6. Phase 6: allowlisted Docker integration.
-7. Phase 7: ngrok only after auth/authorization and security review.
-8. Phase 8–9: backup/recovery, security audit, operations documentation.
+Application hosting should be added later using an **allowlist of named apps and fixed service definitions**, dedicated unprivileged users, restricted working directories, and audit logs. Do not add arbitrary shell commands or expose the Docker socket to the web application.

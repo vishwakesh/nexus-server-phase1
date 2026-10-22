@@ -10,7 +10,30 @@
   <script defer src="/assets/app.js"></script>
 </head>
 <body>
-  <div class="app-shell">
+  <section class="auth-screen" id="authScreen" aria-labelledby="authTitle">
+    <div class="auth-card">
+      <a class="brand auth-brand" href="/" aria-label="NEXUS home">
+        <span class="brand-mark"><svg viewBox="0 0 40 40" aria-hidden="true"><path d="M8 10.5 20 4l12 6.5v14L20 31 8 24.5z"/><path d="M14 23V14l12 12V14"/><circle cx="20" cy="20" r="17"/></svg></span>
+        <span class="brand-copy"><strong>NEXUS</strong><small>SERVER CONTROL</small></span>
+      </a>
+      <div class="eyebrow"><span class="eyebrow-line"></span> PHASE 2 · SECURE ACCESS</div>
+      <h1 id="authTitle">Welcome back<span class="title-period">.</span></h1>
+      <p class="auth-subtitle" id="authSubtitle">Sign in to access your private server dashboard.</p>
+      <div class="auth-notice" id="authNotice" role="status" aria-live="polite">The first registered account becomes administrator. Use a private connection for initial setup.</div>
+      <form id="authForm" class="auth-form">
+        <label for="authEmail">Email address</label>
+        <input id="authEmail" name="email" type="email" autocomplete="username" maxlength="254" required placeholder="you@example.com">
+        <label for="authPassword">Password</label>
+        <input id="authPassword" name="password" type="password" autocomplete="current-password" minlength="12" maxlength="128" required placeholder="At least 12 characters">
+        <p class="password-help" id="passwordHelp">Use at least 12 characters.</p>
+        <button class="auth-submit" id="authSubmit" type="submit">Sign in</button>
+      </form>
+      <button class="auth-switch" id="authSwitch" type="button">New here? Create an account</button>
+      <p class="auth-location"><span></span> Access restricted to IPs geolocated in Telangana, India</p>
+      <p class="auth-footnote">IP geolocation can be inaccurate. A private recovery connection is documented for administrators.</p>
+    </div>
+  </section>
+  <div class="app-shell auth-hidden" id="appShell">
     <aside class="sidebar" id="sidebar" aria-label="Main navigation">
       <a class="brand" href="/" aria-label="NEXUS home">
         <span class="brand-mark"><svg viewBox="0 0 40 40" aria-hidden="true"><path d="M8 10.5 20 4l12 6.5v14L20 31 8 24.5z"/><path d="M14 23V14l12 12V14"/><circle cx="20" cy="20" r="17"/></svg></span>
@@ -32,7 +55,7 @@
       </nav>
       <div class="sidebar-bottom">
         <div class="node-card"><span class="node-pulse"></span><div><strong>Local node</strong><small>Loopback only</small></div><span class="node-dot"></span></div>
-        <div class="sidebar-foot">NEXUS Server <span>v0.1.0 · Phase 1</span></div>
+        <div class="sidebar-foot">NEXUS Server <span>v0.2.0 · Phase 2</span></div>
       </div>
     </aside>
 
@@ -40,7 +63,7 @@
       <header class="topbar">
         <button class="menu-toggle" id="menuToggle" aria-label="Toggle navigation" aria-expanded="false">☰</button>
         <div class="breadcrumb"><span>Workspace</span><span class="crumb-sep">/</span><strong>Overview</strong></div>
-        <div class="topbar-right"><span class="local-pill"><span></span> LOCAL ONLY</span><button id="refreshButton" class="icon-button" type="button" aria-label="Refresh dashboard" title="Refresh dashboard">↻</button><div class="avatar" title="NEXUS administrator">N</div></div>
+        <div class="topbar-right"><span class="local-pill"><span></span> PROTECTED</span><button id="refreshButton" class="icon-button" type="button" aria-label="Refresh dashboard" title="Refresh dashboard">↻</button><div class="avatar" id="userAvatar" title="Signed-in user">N</div><button id="logoutButton" class="logout-button" type="button">Sign out</button></div>
       </header>
 
       <section class="page-heading">
@@ -49,7 +72,7 @@
       </section>
 
       <section class="security-banner" role="status">
-        <span class="banner-icon">!</span><div><strong>Private preview — authentication is not implemented yet.</strong><p>This Phase 1 build binds to localhost. Do not publish it through ngrok until authentication and authorization are added.</p></div>
+        <span class="banner-icon">!</span><div><strong>Authentication is active; advanced app controls are not enabled.</strong><p>This version protects dashboard APIs with server-side sessions and applies approximate Telangana IP geolocation. Keep it on loopback and use HTTPS for any tunnel.</p></div>
       </section>
 
       <section class="section-heading"><div><h2>System resources</h2><p>Collected from the Linux host by the NEXUS API.</p></div><span class="live-label"><span></span> LIVE DATA</span></section>
@@ -61,20 +84,20 @@
       </section>
 
       <section class="main-grid">
-        <article class="panel system-panel"><div class="panel-heading"><div><h2>System status</h2><p>Service integrations and platform readiness.</p></div><span class="panel-badge">PHASE 1</span></div><div class="status-list">
+        <article class="panel system-panel"><div class="panel-heading"><div><h2>System status</h2><p>Service integrations and platform readiness.</p></div><span class="panel-badge">PHASE 2</span></div><div class="status-list">
           <div class="status-row"><span class="status-symbol ok">✓</span><div class="status-description"><strong>NEXUS API</strong><small>HTTP server and health endpoint</small></div><span class="status-text" id="serviceApi">Checking</span></div>
           <div class="status-row"><span class="status-symbol ok">✓</span><div class="status-description"><strong>SQLite database</strong><small>Local event store</small></div><span class="status-text" id="serviceDb">Checking</span></div>
           <div class="status-row"><span class="status-symbol muted">◌</span><div class="status-description"><strong>Hermes Agent</strong><small>Read-only service integration is planned</small></div><span class="status-text neutral">Not integrated</span></div>
           <div class="status-row"><span class="status-symbol muted">◌</span><div class="status-description"><strong>Application hosting</strong><small>Allowlisted service management planned</small></div><span class="status-text neutral">Not integrated</span></div>
-          <div class="status-row"><span class="status-symbol muted">◌</span><div class="status-description"><strong>Public tunnel</strong><small>Disabled until authentication is implemented</small></div><span class="status-text warning-text">Private only</span></div>
-        </div><div class="panel-note"><span>i</span><p>Phase 1 collects host metrics and validates the API/database. Service controls will be added only after an allowlisted, authenticated management layer exists.</p></div></article>
+          <div class="status-row"><span class="status-symbol muted">◌</span><div class="status-description"><strong>Public tunnel</strong><small>Keep disabled until public-access review is complete</small></div><span class="status-text warning-text">Private only</span></div>
+        </div><div class="panel-note"><span>i</span><p>Phase 2 adds accounts and sessions. Application controls will be added only after an allowlisted, role-checked management layer exists.</p></div></article>
 
         <article class="panel events-panel"><div class="panel-heading"><div><h2>Recent activity</h2><p>Events recorded by NEXUS.</p></div><span class="event-count" id="eventCount">— EVENTS</span></div><div id="eventsList" class="events-list"><div class="empty-state"><span class="empty-spinner"></span><strong>Loading activity</strong><small>Connecting to local event store…</small></div></div><div class="events-footer"><span class="footer-dot"></span> Event feed <span class="footer-muted">· Last 12 events</span></div></article>
       </section>
 
-      <section class="next-section"><div class="next-copy"><div class="eyebrow"><span class="eyebrow-line"></span> BUILD ROADMAP</div><h2>One control plane.<br><span>Room to grow.</span></h2><p>NEXUS is being built in safe, testable phases. The foundation comes first; powerful server controls follow behind authentication and strict permissions.</p></div><div class="roadmap-list"><div class="roadmap-step complete"><span class="step-number">01</span><div><strong>Foundation & monitoring</strong><small>Dashboard · real metrics · SQLite · health API</small></div><span class="step-state">IN PROGRESS</span></div><div class="roadmap-step"><span class="step-number">02</span><div><strong>Authentication & audit</strong><small>Admin setup · sessions · permissions · CSRF</small></div><span class="step-state">NEXT</span></div><div class="roadmap-step"><span class="step-number">03</span><div><strong>Apps, bots & Hermes</strong><small>Allowlisted service adapters · logs · controls</small></div><span class="step-state">PLANNED</span></div><div class="roadmap-step"><span class="step-number">04</span><div><strong>Files, backups & tunnel</strong><small>Private files · recovery · controlled access</small></div><span class="step-state">PLANNED</span></div></div></section>
+      <section class="next-section"><div class="next-copy"><div class="eyebrow"><span class="eyebrow-line"></span> BUILD ROADMAP</div><h2>One control plane.<br><span>Room to grow.</span></h2><p>NEXUS is being built in safe, testable phases. The foundation comes first; powerful server controls follow behind authentication and strict permissions.</p></div><div class="roadmap-list"><div class="roadmap-step complete"><span class="step-number">01</span><div><strong>Foundation & monitoring</strong><small>Dashboard · real metrics · SQLite · health API</small></div><span class="step-state">COMPLETE</span></div><div class="roadmap-step complete"><span class="step-number">02</span><div><strong>Authentication foundation</strong><small>First admin · sessions · CSRF · region gate</small></div><span class="step-state">BUILT</span></div><div class="roadmap-step"><span class="step-number">03</span><div><strong>Apps, bots & Hermes</strong><small>Allowlisted service adapters · logs · controls</small></div><span class="step-state">PLANNED</span></div><div class="roadmap-step"><span class="step-number">04</span><div><strong>Files, backups & tunnel</strong><small>Private files · recovery · controlled access</small></div><span class="step-state">PLANNED</span></div></div></section>
 
-      <footer class="page-footer"><div class="footer-brand"><span class="footer-logo">N</span><strong>NEXUS</strong><span>SERVER CONTROL</span></div><p>Built for your own infrastructure. <span id="footerVersion">v0.1.0</span></p><p class="footer-local"><span></span> Listening on loopback</p></footer>
+      <footer class="page-footer"><div class="footer-brand"><span class="footer-logo">N</span><strong>NEXUS</strong><span>SERVER CONTROL</span></div><p>Built for your own infrastructure. <span id="footerVersion">v0.2.0</span></p><p class="footer-local"><span></span> Loopback only · Telangana IP gate</p></footer>
     </main>
   </div>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
