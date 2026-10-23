@@ -14,18 +14,18 @@ use argon2::{
 };
 use axum::{
     body::Body,
-    extract::{ConnectInfo, State},
+    extract::{ConnectInfo, Path as AxumPath, State},
     http::{header, HeaderMap, HeaderValue, Request, StatusCode},
     middleware::{self, Next},
     response::{Html, IntoResponse, Response},
-    routing::{get, post},
+    routing::{delete, get, patch, post},
     Json, Router,
 };
 use rand_core::{OsRng, RngCore};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use sqlx::{
-    sqlite::{SqliteConnectOptions, SqliteJournalMode},
+    sqlite::{SqliteConnectOptions, SqliteJournalMode, SqliteRow},
     Row, SqlitePool,
 };
 use sysinfo::{Disks, System};
@@ -40,6 +40,8 @@ const APP_JS: &str = include_str!("../frontend/app.js");
 const SESSION_TTL_SECONDS: i64 = 12 * 60 * 60;
 const AUTH_RATE_WINDOW_SECONDS: u64 = 15 * 60;
 const AUTH_RATE_MAX_ATTEMPTS: usize = 10;
+const MAX_BOTS_PER_USER: i64 = 10;
+const MAX_BOTS_GLOBAL: i64 = 100;
 
 #[derive(Clone)]
 struct AppState {
@@ -211,6 +213,10 @@ async fn initialize_database(path: &Path) -> Result<SqlitePool> {
         "CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT, email TEXT NOT NULL UNIQUE COLLATE NOCASE, password_hash TEXT NOT NULL, role TEXT NOT NULL CHECK(role IN ('admin','user')), created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')))",
         "CREATE TABLE IF NOT EXISTS sessions (token_hash TEXT PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE, csrf_token TEXT NOT NULL, created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL)",
         "CREATE INDEX IF NOT EXISTS sessions_expiry_idx ON sessions(expires_at)",
+        "CREATE TABLE IF NOT EXISTS bots (id INTEGER PRIMARY KEY AUTOINCREMENT, owner_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE, name TEXT NOT NULL CHECK(length(name) BETWEEN 2 AND 48), description TEXT, runtime TEXT NOT NULL CHECK(runtime IN ('python','node')), runtime_version TEXT NOT NULL, entrypoint TEXT NOT NULL, cpu_limit_millicores INTEGER NOT NULL CHECK(cpu_limit_millicores BETWEEN 100 AND 2000), memory_limit_mb INTEGER NOT NULL CHECK(memory_limit_mb BETWEEN 128 AND 2048), desired_state TEXT NOT NULL DEFAULT 'stopped' CHECK(desired_state IN ('stopped','running')), observed_state TEXT NOT NULL DEFAULT 'stopped' CHECK(observed_state IN ('stopped','starting','running','stopping','failed','deploying','unavailable')), created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')), updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')), last_activity_at TEXT)",
+        "CREATE INDEX IF NOT EXISTS bots_owner_idx ON bots(owner_user_id, id DESC)",
+        "CREATE TABLE IF NOT EXISTS bot_events (id INTEGER PRIMARY KEY AUTOINCREMENT, bot_id INTEGER NOT NULL REFERENCES bots(id) ON DELETE CASCADE, owner_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE, event_type TEXT NOT NULL, message TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')))",
+        "CREATE INDEX IF NOT EXISTS bot_events_owner_bot_idx ON bot_events(owner_user_id, bot_id, id DESC)",
     ] {
         sqlx::query(statement)
             .execute(&pool)
@@ -735,6 +741,264 @@ async fn events(State(state): State<AppState>) -> Result<Json<Vec<Event>>, Statu
     }).collect()))
 }
 
+
+// Phase B backend foundation. These APIs persist user-owned bot configuration only.
+// Executing user code remains disabled until the separately restricted supervisor is installed.
+#[derive(Clone, Serialize)]
+struct BotRecord {
+    id: i64,
+    name: String,
+    description: Option<String>,
+    runtime: String,
+    runtime_version: String,
+    entrypoint: String,
+    cpu_limit_millicores: i64,
+    memory_limit_mb: i64,
+    desired_state: String,
+    observed_state: String,
+    created_at: String,
+    updated_at: String,
+    last_activity_at: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct CreateBotRequest {
+    name: String,
+    #[serde(default)]
+    description: Option<String>,
+    runtime: String,
+    runtime_version: String,
+    entrypoint: String,
+    #[serde(default)]
+    cpu_limit_millicores: Option<i64>,
+    #[serde(default)]
+    memory_limit_mb: Option<i64>,
+}
+
+#[derive(Deserialize)]
+struct UpdateBotRequest {
+    #[serde(default)]
+    name: Option<String>,
+    #[serde(default)]
+    description: Option<String>,
+    #[serde(default)]
+    entrypoint: Option<String>,
+    #[serde(default)]
+    cpu_limit_millicores: Option<i64>,
+    #[serde(default)]
+    memory_limit_mb: Option<i64>,
+}
+
+#[derive(Serialize)]
+struct BotEventRecord {
+    id: i64,
+    event_type: String,
+    message: String,
+    created_at: String,
+}
+
+#[derive(Serialize)]
+struct RuntimeCapabilities {
+    metadata_api: bool,
+    execution_enabled: bool,
+    supervisor_status: &'static str,
+    message: &'static str,
+}
+
+fn bot_from_row(row: SqliteRow) -> BotRecord {
+    BotRecord {
+        id: row.get("id"),
+        name: row.get("name"),
+        description: row.get("description"),
+        runtime: row.get("runtime"),
+        runtime_version: row.get("runtime_version"),
+        entrypoint: row.get("entrypoint"),
+        cpu_limit_millicores: row.get("cpu_limit_millicores"),
+        memory_limit_mb: row.get("memory_limit_mb"),
+        desired_state: row.get("desired_state"),
+        observed_state: row.get("observed_state"),
+        created_at: row.get("created_at"),
+        updated_at: row.get("updated_at"),
+        last_activity_at: row.get("last_activity_at"),
+    }
+}
+
+async fn current_user_id(state: &AppState, headers: &HeaderMap) -> std::result::Result<i64, Response> {
+    match load_session(state, headers).await {
+        Ok(Some(session)) => Ok(session.user.id),
+        Ok(None) => Err(api_error(StatusCode::UNAUTHORIZED, "Please sign in to continue.")),
+        Err(error) => {
+            warn!(error = %error, "bot API session lookup failed");
+            Err(api_error(StatusCode::INTERNAL_SERVER_ERROR, "Could not verify session."))
+        }
+    }
+}
+
+fn valid_bot_name(value: &str) -> bool {
+    let v = value.trim();
+    (2..=48).contains(&v.len())
+        && v == value
+        && v.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, ' ' | '-' | '_' | '.'))
+        && v.chars().next().is_some_and(|c| c.is_ascii_alphanumeric())
+        && !v.ends_with('.')
+}
+
+fn valid_entrypoint(runtime: &str, value: &str) -> bool {
+    if value.is_empty() || value.len() > 160 || value.starts_with('/') || value.contains('\\') || value.contains(':') || value.contains('\0') {
+        return false;
+    }
+    let parts: Vec<&str> = value.split('/').collect();
+    if parts.iter().any(|p| p.is_empty() || *p == "." || *p == ".." || !p.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.'))) {
+        return false;
+    }
+    let extension_ok = match runtime {
+        "python" => value.ends_with(".py"),
+        "node" => value.ends_with(".js") || value.ends_with(".mjs") || value.ends_with(".cjs"),
+        _ => false,
+    };
+    extension_ok && !value.starts_with('.')
+}
+
+fn validate_runtime(runtime: &str, version: &str) -> bool {
+    matches!((runtime, version), ("python", "3.11") | ("python", "3.12") | ("node", "20") | ("node", "22"))
+}
+
+fn validate_limits(cpu: i64, memory: i64) -> bool {
+    (100..=2000).contains(&cpu) && (128..=2048).contains(&memory)
+}
+
+async fn get_owned_bot(state: &AppState, owner_id: i64, bot_id: i64) -> Result<Option<BotRecord>, sqlx::Error> {
+    let row = sqlx::query("SELECT id,name,description,runtime,runtime_version,entrypoint,cpu_limit_millicores,memory_limit_mb,desired_state,observed_state,created_at,updated_at,last_activity_at FROM bots WHERE id=? AND owner_user_id=?")
+        .bind(bot_id).bind(owner_id).fetch_optional(&state.db).await?;
+    Ok(row.map(bot_from_row))
+}
+
+async fn write_bot_event(state: &AppState, owner_id: i64, bot_id: i64, event_type: &str, message: &str) {
+    if let Err(error) = sqlx::query("INSERT INTO bot_events(bot_id,owner_user_id,event_type,message) VALUES(?,?,?,?)")
+        .bind(bot_id).bind(owner_id).bind(event_type).bind(message).execute(&state.db).await {
+        warn!(error = %error, bot_id, "could not record bot event");
+    } else if let Err(error) = sqlx::query("UPDATE bots SET last_activity_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=? AND owner_user_id=?")
+        .bind(bot_id).bind(owner_id).execute(&state.db).await {
+        warn!(error = %error, bot_id, "could not update bot activity timestamp");
+    }
+}
+
+async fn list_bots(State(state): State<AppState>, headers: HeaderMap) -> Response {
+    let owner_id = match current_user_id(&state, &headers).await { Ok(id) => id, Err(response) => return response };
+    let rows = match sqlx::query("SELECT id,name,description,runtime,runtime_version,entrypoint,cpu_limit_millicores,memory_limit_mb,desired_state,observed_state,created_at,updated_at,last_activity_at FROM bots WHERE owner_user_id=? ORDER BY id DESC LIMIT 200")
+        .bind(owner_id).fetch_all(&state.db).await {
+        Ok(rows) => rows,
+        Err(error) => { warn!(error = %error, "bot list query failed"); return api_error(StatusCode::INTERNAL_SERVER_ERROR, "Could not load bots."); }
+    };
+    Json(rows.into_iter().map(bot_from_row).collect::<Vec<_>>()).into_response()
+}
+
+async fn create_bot(State(state): State<AppState>, headers: HeaderMap, Json(input): Json<CreateBotRequest>) -> Response {
+    let owner_id = match current_user_id(&state, &headers).await { Ok(id) => id, Err(response) => return response };
+    let name = input.name.trim();
+    let description = input.description.as_deref().map(str::trim).filter(|v| !v.is_empty());
+    let cpu = input.cpu_limit_millicores.unwrap_or(1000);
+    let memory = input.memory_limit_mb.unwrap_or(512);
+    if !valid_bot_name(name) { return api_error(StatusCode::BAD_REQUEST, "Bot name must be 2–48 characters and use letters, numbers, spaces, dots, underscores or hyphens."); }
+    if description.is_some_and(|v| v.len() > 240) { return api_error(StatusCode::BAD_REQUEST, "Description must be 240 characters or fewer."); }
+    if !validate_runtime(&input.runtime, &input.runtime_version) { return api_error(StatusCode::BAD_REQUEST, "Unsupported runtime/version combination."); }
+    if !valid_entrypoint(&input.runtime, &input.entrypoint) { return api_error(StatusCode::BAD_REQUEST, "Entrypoint must be a safe relative Python or JavaScript file path."); }
+    if !validate_limits(cpu, memory) { return api_error(StatusCode::BAD_REQUEST, "Resource limits are outside the permitted range."); }
+    let user_count = match sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM bots WHERE owner_user_id=?").bind(owner_id).fetch_one(&state.db).await {
+        Ok(count) => count,
+        Err(error) => { warn!(error = %error, "bot quota query failed"); return api_error(StatusCode::INTERNAL_SERVER_ERROR, "Could not verify bot quota."); }
+    };
+    if user_count >= MAX_BOTS_PER_USER { return api_error(StatusCode::TOO_MANY_REQUESTS, "Bot quota reached for this account."); }
+    let global_count = match sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM bots").fetch_one(&state.db).await {
+        Ok(count) => count,
+        Err(error) => { warn!(error = %error, "global bot quota query failed"); return api_error(StatusCode::INTERNAL_SERVER_ERROR, "Could not verify hosting capacity."); }
+    };
+    if global_count >= MAX_BOTS_GLOBAL { return api_error(StatusCode::TOO_MANY_REQUESTS, "NEXUS bot capacity is currently full."); }
+    let result = sqlx::query("INSERT INTO bots(owner_user_id,name,description,runtime,runtime_version,entrypoint,cpu_limit_millicores,memory_limit_mb,desired_state,observed_state) VALUES(?,?,?,?,?,?,?,?, 'stopped','stopped')")
+        .bind(owner_id).bind(name).bind(description).bind(&input.runtime).bind(&input.runtime_version).bind(&input.entrypoint).bind(cpu).bind(memory).execute(&state.db).await;
+    let bot_id = match result { Ok(result) => result.last_insert_rowid(), Err(error) => { warn!(error = %error, "bot creation failed"); return api_error(StatusCode::INTERNAL_SERVER_ERROR, "Could not create bot configuration."); } };
+    write_bot_event(&state, owner_id, bot_id, "created", "Bot configuration created; runtime not provisioned.").await;
+    match get_owned_bot(&state, owner_id, bot_id).await {
+        Ok(Some(bot)) => (StatusCode::CREATED, Json(bot)).into_response(),
+        _ => api_error(StatusCode::INTERNAL_SERVER_ERROR, "Bot was created but could not be loaded."),
+    }
+}
+
+async fn get_bot(State(state): State<AppState>, headers: HeaderMap, AxumPath(bot_id): AxumPath<i64>) -> Response {
+    let owner_id = match current_user_id(&state, &headers).await { Ok(id) => id, Err(response) => return response };
+    match get_owned_bot(&state, owner_id, bot_id).await {
+        Ok(Some(bot)) => Json(bot).into_response(),
+        Ok(None) => api_error(StatusCode::NOT_FOUND, "Bot not found."),
+        Err(error) => { warn!(error = %error, "bot detail query failed"); api_error(StatusCode::INTERNAL_SERVER_ERROR, "Could not load bot.") }
+    }
+}
+
+async fn update_bot(State(state): State<AppState>, headers: HeaderMap, AxumPath(bot_id): AxumPath<i64>, Json(input): Json<UpdateBotRequest>) -> Response {
+    let owner_id = match current_user_id(&state, &headers).await { Ok(id) => id, Err(response) => return response };
+    let mut bot = match get_owned_bot(&state, owner_id, bot_id).await {
+        Ok(Some(bot)) => bot,
+        Ok(None) => return api_error(StatusCode::NOT_FOUND, "Bot not found."),
+        Err(error) => { warn!(error = %error, "bot update lookup failed"); return api_error(StatusCode::INTERNAL_SERVER_ERROR, "Could not load bot."); }
+    };
+    if let Some(name) = input.name { if !valid_bot_name(name.trim()) { return api_error(StatusCode::BAD_REQUEST, "Invalid bot name."); } bot.name = name.trim().to_string(); }
+    if let Some(description) = input.description { let desc = description.trim(); if desc.len() > 240 { return api_error(StatusCode::BAD_REQUEST, "Description must be 240 characters or fewer."); } bot.description = if desc.is_empty() { None } else { Some(desc.to_string()) }; }
+    if let Some(entrypoint) = input.entrypoint { if !valid_entrypoint(&bot.runtime, &entrypoint) { return api_error(StatusCode::BAD_REQUEST, "Invalid entrypoint path for this runtime."); } bot.entrypoint = entrypoint; }
+    if let Some(cpu) = input.cpu_limit_millicores { bot.cpu_limit_millicores = cpu; }
+    if let Some(memory) = input.memory_limit_mb { bot.memory_limit_mb = memory; }
+    if !validate_limits(bot.cpu_limit_millicores, bot.memory_limit_mb) { return api_error(StatusCode::BAD_REQUEST, "Resource limits are outside the permitted range."); }
+    if bot.observed_state != "stopped" { return api_error(StatusCode::CONFLICT, "Configuration can only be edited while the bot is stopped."); }
+    if let Err(error) = sqlx::query("UPDATE bots SET name=?,description=?,entrypoint=?,cpu_limit_millicores=?,memory_limit_mb=?,updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=? AND owner_user_id=?")
+        .bind(&bot.name).bind(&bot.description).bind(&bot.entrypoint).bind(bot.cpu_limit_millicores).bind(bot.memory_limit_mb).bind(bot_id).bind(owner_id).execute(&state.db).await {
+        warn!(error = %error, "bot update failed"); return api_error(StatusCode::INTERNAL_SERVER_ERROR, "Could not update bot.");
+    }
+    write_bot_event(&state, owner_id, bot_id, "configuration_updated", "Bot configuration updated.").await;
+    match get_owned_bot(&state, owner_id, bot_id).await {
+        Ok(Some(updated)) => Json(updated).into_response(),
+        _ => api_error(StatusCode::INTERNAL_SERVER_ERROR, "Bot updated but could not be reloaded."),
+    }
+}
+
+async fn delete_bot(State(state): State<AppState>, headers: HeaderMap, AxumPath(bot_id): AxumPath<i64>) -> Response {
+    let owner_id = match current_user_id(&state, &headers).await { Ok(id) => id, Err(response) => return response };
+    match get_owned_bot(&state, owner_id, bot_id).await {
+        Ok(None) => return api_error(StatusCode::NOT_FOUND, "Bot not found."),
+        Err(error) => { warn!(error = %error, "bot deletion lookup failed"); return api_error(StatusCode::INTERNAL_SERVER_ERROR, "Could not verify bot."); }
+        Ok(Some(bot)) if bot.observed_state != "stopped" && bot.observed_state != "failed" => return api_error(StatusCode::CONFLICT, "Only stopped or failed bots can be deleted."),
+        Ok(Some(_)) => {},
+    }
+    // Do not delete records yet: a runtime-aware cleanup supervisor is required to avoid orphaned resources.
+    api_error(StatusCode::SERVICE_UNAVAILABLE, "Deletion is disabled until the isolated runtime supervisor can confirm resource cleanup.")
+}
+
+async fn bot_activity(State(state): State<AppState>, headers: HeaderMap, AxumPath(bot_id): AxumPath<i64>) -> Response {
+    let owner_id = match current_user_id(&state, &headers).await { Ok(id) => id, Err(response) => return response };
+    match get_owned_bot(&state, owner_id, bot_id).await {
+        Ok(Some(_)) => {},
+        Ok(None) => return api_error(StatusCode::NOT_FOUND, "Bot not found."),
+        Err(error) => { warn!(error = %error, "bot activity ownership check failed"); return api_error(StatusCode::INTERNAL_SERVER_ERROR, "Could not load bot activity."); }
+    }
+    let rows = match sqlx::query("SELECT id,event_type,message,created_at FROM bot_events WHERE bot_id=? AND owner_user_id=? ORDER BY id DESC LIMIT 100")
+        .bind(bot_id).bind(owner_id).fetch_all(&state.db).await {
+        Ok(rows) => rows,
+        Err(error) => { warn!(error = %error, "bot activity query failed"); return api_error(StatusCode::INTERNAL_SERVER_ERROR, "Could not load bot activity."); }
+    };
+    let events = rows.into_iter().map(|row| BotEventRecord { id: row.get("id"), event_type: row.get("event_type"), message: row.get("message"), created_at: row.get("created_at") }).collect::<Vec<_>>();
+    Json(events).into_response()
+}
+
+async fn runtime_capabilities() -> Json<RuntimeCapabilities> {
+    Json(RuntimeCapabilities { metadata_api: true, execution_enabled: false, supervisor_status: "not_installed", message: "Bot configuration APIs are available; execution, files, secrets, dependencies and lifecycle actions remain disabled until the isolated supervisor is installed and verified." })
+}
+
+async fn unavailable_runtime_action(State(state): State<AppState>, headers: HeaderMap, AxumPath(bot_id): AxumPath<i64>) -> Response {
+    let owner_id = match current_user_id(&state, &headers).await { Ok(id) => id, Err(response) => return response };
+    match get_owned_bot(&state, owner_id, bot_id).await {
+        Ok(Some(_)) => api_error(StatusCode::SERVICE_UNAVAILABLE, "Bot runtime is not configured. No code was executed and no lifecycle change was made."),
+        Ok(None) => api_error(StatusCode::NOT_FOUND, "Bot not found."),
+        Err(error) => { warn!(error = %error, "runtime action ownership check failed"); api_error(StatusCode::INTERNAL_SERVER_ERROR, "Could not verify bot ownership.") }
+    }
+}
+
 async fn shutdown_signal() {
     let ctrl_c = async { tokio::signal::ctrl_c().await.expect("failed to install Ctrl+C handler"); };
     #[cfg(unix)]
@@ -783,6 +1047,17 @@ async fn main() -> Result<()> {
         .route("/api/info", get(info))
         .route("/api/metrics", get(metrics))
         .route("/api/events", get(events))
+        .route("/api/bots/runtime-capabilities", get(runtime_capabilities))
+        .route("/api/bots", get(list_bots).post(create_bot))
+        .route("/api/bots/{id}", get(get_bot).patch(update_bot).delete(delete_bot))
+        .route("/api/bots/{id}/activity", get(bot_activity))
+        .route("/api/bots/{id}/start", post(unavailable_runtime_action))
+        .route("/api/bots/{id}/stop", post(unavailable_runtime_action))
+        .route("/api/bots/{id}/restart", post(unavailable_runtime_action))
+        .route("/api/bots/{id}/dependencies/install", post(unavailable_runtime_action))
+        .route("/api/bots/{id}/logs", get(unavailable_runtime_action))
+        .route("/api/bots/{id}/files", get(unavailable_runtime_action))
+        .route("/api/bots/{id}/environment", get(unavailable_runtime_action))
         .route_layer(middleware::from_fn_with_state(state.clone(), require_auth));
 
     let app = Router::new()
@@ -814,7 +1089,7 @@ async fn main() -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::{hash_password, normalize_email, password_matches};
+    use super::{hash_password, normalize_email, password_matches, valid_bot_name, valid_entrypoint, validate_limits, validate_runtime};
 
     #[test]
     fn password_hash_verifies_without_storing_plaintext() {
@@ -829,5 +1104,29 @@ mod tests {
     fn email_normalization_is_case_insensitive() {
         assert_eq!(normalize_email("  Admin@Example.com "), Some("admin@example.com".to_string()));
         assert_eq!(normalize_email("not-an-email"), None);
+    }
+
+    #[test]
+    fn bot_names_and_entrypoints_reject_unsafe_values() {
+        assert!(valid_bot_name("megabot_01"));
+        assert!(!valid_bot_name(" ../bad"));
+        assert!(!valid_bot_name("name\nother"));
+        assert!(valid_entrypoint("python", "main.py"));
+        assert!(valid_entrypoint("node", "src/index.js"));
+        assert!(!valid_entrypoint("python", "../main.py"));
+        assert!(!valid_entrypoint("python", "/etc/passwd.py"));
+        assert!(!valid_entrypoint("node", "src/../index.js"));
+        assert!(!valid_entrypoint("node", "index.sh"));
+    }
+
+    #[test]
+    fn runtime_and_resource_allowlists_are_enforced() {
+        assert!(validate_runtime("python", "3.12"));
+        assert!(validate_runtime("node", "22"));
+        assert!(!validate_runtime("python", "latest"));
+        assert!(!validate_runtime("node", "20.999"));
+        assert!(validate_limits(1000, 512));
+        assert!(!validate_limits(5000, 512));
+        assert!(!validate_limits(1000, 8192));
     }
 }

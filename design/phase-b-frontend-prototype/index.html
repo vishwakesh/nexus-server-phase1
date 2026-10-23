@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0c0c0d">
+  <title>NEXUS — Bot Hosting</title>
+  <link rel="stylesheet" href="app.css">
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar" id="sidebar" aria-label="Main navigation">
+      <div class="brand"><div class="brand-mark">N</div><div class="brand-copy"><b>NEXUS</b><small>Server Control</small></div><button class="icon-btn sidebar-close" id="sidebar-close" aria-label="Close navigation">×</button></div>
+      <div class="nav-label">MANAGE</div>
+      <nav class="main-nav">
+        <button class="nav-item" data-view="overview"><span class="nav-ico">⌂</span><span>Overview</span></button>
+        <button class="nav-item" data-view="applications"><span class="nav-ico">▦</span><span>Applications</span></button>
+        <button class="nav-item active" data-view="hosting"><span class="nav-ico">♧</span><span>Bot Hosting</span></button>
+        <button class="nav-item" data-view="agents"><span class="nav-ico">✣</span><span>AI Agents</span><span class="pill planned">Planned</span></button>
+        <button class="nav-item" data-view="containers"><span class="nav-ico">⬡</span><span>Containers</span><span class="pill planned">Planned</span></button>
+      </nav>
+      <div class="nav-label">SYSTEM</div>
+      <nav class="main-nav">
+        <button class="nav-item" data-view="monitoring"><span class="nav-ico">⌁</span><span>Monitoring</span></button>
+        <button class="nav-item" data-view="backups"><span class="nav-ico">▤</span><span>Backups</span></button>
+        <button class="nav-item" data-view="settings"><span class="nav-ico">⚙</span><span>Settings</span></button>
+      </nav>
+      <div class="sidebar-bottom">
+        <div class="server-health"><span class="pulse"></span><div><b>Server Online</b><small>Preview environment</small></div><span class="health-chevron">›</span></div>
+        <div class="profile"><div class="avatar">V</div><div class="profile-copy"><b>Vishwakesh</b><small>Administrator</small></div><button class="icon-btn" aria-label="Profile menu">⋮</button></div>
+      </div>
+    </aside>
+    <div class="scrim" id="scrim"></div>
+    <main class="main-area">
+      <header class="topbar">
+        <button class="icon-btn menu-toggle" id="menu-toggle" aria-label="Open navigation">☰</button>
+        <button class="global-search" id="global-search"><span>⌕</span><span>Search bots, files, logs…</span><kbd>Ctrl K</kbd></button>
+        <div class="topbar-right"><button class="server-select"><span class="server-icon">▤</span><span>Main Server</span><span>⌄</span></button><button class="icon-btn notification" aria-label="Notifications">♧<i></i></button><div class="avatar small-avatar">V</div><button class="icon-btn user-more" aria-label="More options">⌄</button></div>
+      </header>
+      <div class="preview-notice"><span class="preview-dot"></span><b>DESIGN PREVIEW</b><span>Sample data only · Not connected to the production API</span></div>
+      <section id="view-root" class="view-root" aria-live="polite"></section>
+    </main>
+  </div>
+  <div id="toast-region" class="toast-region" aria-live="polite" aria-atomic="true"></div>
+  <dialog id="confirm-dialog" class="modal"><form method="dialog" id="confirm-form"><div class="modal-icon danger-icon">!</div><h2 id="confirm-title">Confirm action</h2><p id="confirm-copy">This action cannot be undone.</p><div class="modal-actions"><button class="btn secondary" value="cancel">Cancel</button><button class="btn danger" id="confirm-yes" value="confirm">Confirm</button></div></form></dialog>
+  <dialog id="env-dialog" class="modal"><form id="env-form"><div class="modal-head"><div><span class="eyebrow">BOT CONFIGURATION</span><h2>Add environment variable</h2></div><button type="button" class="icon-btn" data-close-dialog="env-dialog">×</button></div><label class="field-label" for="env-name">Variable name <span>*</span></label><input id="env-name" name="name" placeholder="DISCORD_TOKEN" autocomplete="off" required pattern="[A-Za-z_][A-Za-z0-9_]*"><label class="field-label" for="env-value">Value <span>*</span></label><input id="env-value" name="value" type="password" placeholder="Enter secret value" autocomplete="new-password" required><div class="security-note"><span>⚠</span><div><b>Secret handling preview</b><p>Values are held only in this page's memory and are not sent to a server. Production must encrypt secrets at rest.</p></div></div><div class="modal-actions"><button type="button" class="btn secondary" data-close-dialog="env-dialog">Cancel</button><button class="btn primary" type="submit">Add Variable</button></div></form></dialog>
+</body>
+</html>
